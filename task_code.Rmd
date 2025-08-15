@@ -1,0 +1,178 @@
+---
+title: "Task code"
+author: "Dan Deabler"
+date: "2025-08-15"
+output: html_document
+---
+
+Task:
+You are presented with a data set representing student responses to a multiple choice achievement test. There are 1,000 rows in the data set, each representing unique information about a single student. There are 11 columns; the first column is a character string student ID variable and the remaining 10 columns are responses to test items, scored as 0/1. How would you conduct an initial evaluation of item or test performance?
+
+
+# Create fake test data to assess validity of code
+```{r}
+set.seed(1) # For reproducibility
+
+# Specify parameters
+n_students <- 1000
+n_items <- 10
+lower_prob <- 0.05
+upper_prob <- 0.9
+
+# Create student IDs as strings
+student_ids <- sprintf("S%04d", 1:n_students)  # S0001, S0002, etc
+
+# Generate binary responses (0/1), assume items vary in difficulty
+prob_correct <- sample(seq(lower_prob, upper_prob, length.out = n_items)) # probability a student gets an item right
+
+item_responses <- sapply(prob_correct, function(p) rbinom(n_students, size = 1, prob = p))
+
+# Combine into a data frame
+student_df <- data.frame(
+  student_id = student_ids,
+  item_responses
+)
+
+# Name the test item columns
+colnames(student_df)[-1] <- paste0("Item", 1:n_items)
+
+```
+
+
+# Install and load necessary packages
+```{r}
+
+packages <- c(
+  "dplyr",
+  "ggplot2",
+  "tibble"
+)
+
+have <- packages %in% rownames(installed.packages())
+
+if (any(!have)) {
+  install.packages(packages[!have], dependencies = TRUE, ask = FALSE)
+}
+
+for (pkg in packages) {
+  library(pkg, character.only = TRUE)
+}
+
+```
+
+
+# Perform initial evaluation of data
+```{r}
+
+# Note: In reality we'd load the data, but for the purposes of this task we've already created fake test data that's stored in our environment.
+# student_df <- read.csv("student_test_data.csv")  
+
+
+# 1). Ensure that structure of the data is as expected
+dim(student_df)     # Expecting 1000 rows and 11 columns
+head(student_df)    # View first few rows
+str(student_df)     # Confirm column data types
+
+
+# 2). Separate student ID and item responses
+student_id <- student_df[[1]]                     # first column: student IDs
+item_responses <- student_df[, 2:11]              # 10 binary-scored items
+
+
+# 3). Preliminary data checks
+# Check for missing or invalid entries
+colSums(is.na(item_responses))
+
+# Ensure all responses are 0 or 1
+table(unlist(item_responses))
+
+
+# 4). Item-level descriptive statistics (e.g. mean, sd)
+# Percent correct for each item, across all students
+item_mean <- colMeans(item_responses)
+
+# Same as above, but calculating standard deviation
+item_sd <- apply(item_responses, 2, sd)
+
+
+# 5). Test-level statistics
+# e.g. mean, sd, min, max
+student_scores <- rowSums(item_responses)
+
+mean(student_scores)
+sd(student_scores)
+range(student_scores)
+
+# Display student scores distribution
+p1 <- ggplot(tibble(student_scores), aes(x = student_scores)) +
+  geom_histogram(
+    binwidth = 1,
+    fill = "steelblue",
+    color = "black"
+  ) +
+  labs(
+    title = "Distribution of Student Scores",
+    x = "Student Scores",
+    y = "Count"
+  ) +
+  scale_x_continuous(
+    breaks = seq(min(student_scores), max(student_scores), by = 1)
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5), # center the title
+    panel.grid.major = element_blank()      # remove major gridlines
+  )
+
+plot(p1)
+
+
+# 6). Identify which test items (if any) are too easy or difficult. Note, completely speculating what defines "easy" or "difficult" here
+# Too easy (perc_correct < 0.1)
+easy_items <- which(item_mean <= 0.1)
+
+# Too difficult (perc_correct > 0.9)
+hard_items <- which(item_mean >= 0.9)
+
+
+# 7). Visualize how easy/difficult the test items were
+# Create data frame for ggplot
+item_df <- tibble(
+  item = names(item_mean),
+  difficulty = as.numeric(item_mean)
+) %>%
+  mutate(
+    item = factor(item, levels = item), # preserve ordering
+    bar_color = case_when(
+      difficulty >= 0.9 ~ "Too easy",
+      difficulty <= 0.1 ~ "Too hard",
+      TRUE ~ "Within acceptable range"
+    )
+  )
+
+# Define colors for the legend
+color_map <- c("Too easy" = "darkgreen",
+               "Too hard" = "darkred",
+               "Within acceptable range" = "lightgray")
+
+# Plot
+p2 <- ggplot(item_df, aes(x = item, y = difficulty, fill = bar_color)) +
+  geom_col() +
+  scale_fill_manual(values = color_map, name = "Item Difficulty") +
+  labs(
+    title = "Test Item Difficulty (Percentage Correct)",
+    x = "Test Item",
+    y = "Correct (%)"
+  ) +
+  ylim(0, 1) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),             # center title
+    axis.text.x = element_text(angle = 45, hjust = 1),  # rotate x-axis labels
+    panel.grid.major = element_blank()                  # remove major gridlines
+  )
+
+plot(p2)
+
+
+```
